@@ -1,0 +1,329 @@
+<a id='installing-spark'></a>
+### Installing Spark
+
+!apt-get install openjdk-8-jdk-headless -qq > /dev/null
+!wget -q http://archive.apache.org/dist/spark/spark-3.1.1/spark-3.1.1-bin-hadoop3.2.tgz
+!tar xf spark-3.1.1-bin-hadoop3.2.tgz
+!pip install -q findspark
+
+Set Environment Variables:
+
+import os
+os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-8-openjdk-amd64"
+os.environ["SPARK_HOME"] = "/content/spark-3.1.1-bin-hadoop3.2"
+
+!ls
+
+import findspark
+findspark.init()
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.master("local[*]").getOrCreate()
+spark.conf.set("spark.sql.repl.eagerEval.enabled", True) # Property used to format output tables better
+spark
+
+**Load The Data**
+
+
+
+
+import numpy as np
+import pandas as pd
+import math
+
+try:
+    import mlflow
+except ImportError:
+    !pip install mlflow
+    import mlflow
+
+
+
+import os
+os.environ["PYSPARK_PYTHON"] = "python3"
+
+
+from pyspark.sql import SparkSession
+spark = SparkSession \
+    .builder \
+    .appName("moive analysis") \
+    .config("spark.some.config.option", "some-value") \
+    .getOrCreate()
+
+movies_df = spark.read.load("/content/movies.csv", format='csv', header = True)
+ratings_df = spark.read.load("/content/ratings.csv", format='csv', header = True)
+links_df = spark.read.load("/content/links.csv", format='csv', header = True)
+tags_df = spark.read.load("/content/tags.csv", format='csv', header = True)
+
+movies_df.head(10)
+
+ratings_df.head(10)
+
+links_df.head(10)
+
+tags_df.head(10)
+
+# Convert DataFrame to Pandas DataFrame
+movies_pd = movies_df.toPandas()
+
+# Convert Pandas DataFrame to table format
+movies_table = pd.DataFrame(movies_pd, columns=['movieId', 'title', 'genres'])
+
+# Print the table
+movies_table.head()
+
+# Convert DataFrame to Pandas DataFrame
+ratings_pd = ratings_df.toPandas()
+
+# Convert Pandas DataFrame to table format
+ratings_table = pd.DataFrame(ratings_pd, columns=['userId', 'movieId', 'rating', 'timestamp'])
+
+# Print the table
+ratings_table.head()
+
+# Convert DataFrame to Pandas DataFrame
+links_pd = links_df.toPandas()
+
+# Convert Pandas DataFrame to table format
+links_table = pd.DataFrame(links_pd, columns=['movieId', 'imdbId', 'tmdbId'])
+
+# Print the table
+links_table.head()
+
+# Convert DataFrame to Pandas DataFrame
+tags_pd = tags_df.toPandas()
+
+# Convert Pandas DataFrame to table format
+tags_table = pd.DataFrame(tags_pd, columns=['userId', 'movieId', 'tag', 'timestamp'])
+
+# Print the table
+tags_table.head()
+
+
+# change from data frame to be in spark
+# Create a SparkSession
+spark = SparkSession.builder.getOrCreate()
+
+# Convert the Pandas DataFrame to a Spark DataFrame
+movies_spark = spark.createDataFrame(movies_table)
+
+# Show the Spark DataFrame
+movies_spark.show()
+
+# change from data frame to be in spark
+# Create a SparkSession
+spark = SparkSession.builder.getOrCreate()
+
+# Convert the Pandas DataFrame to a Spark DataFrame
+ratings_spark = spark.createDataFrame(ratings_pd)
+
+# Show the Spark DataFrame
+ratings_spark.show()
+
+# change from data frame to be in spark
+# Create a SparkSession
+spark = SparkSession.builder.getOrCreate()
+
+# Convert the Pandas DataFrame to a Spark DataFrame
+links_spark = spark.createDataFrame(links_table)
+
+# Show the Spark DataFrame
+links_spark.show()
+
+# change from data frame to be in spark
+
+# Create a SparkSession
+spark = SparkSession.builder.getOrCreate()
+
+# Convert the Pandas DataFrame to a Spark DataFrame
+tags_spark = spark.createDataFrame(tags_table)
+
+# Show the Spark DataFrame
+tags_spark.show()
+
+#movies_df.show(5)
+
+movies_spark.createOrReplaceTempView("movies_spark")
+
+display (spark.sql("SELECT * FROM movies_spark limit 10"))
+
+#movies_df.show(5)
+
+ratings_spark.createOrReplaceTempView("ratings_spark")
+
+display (spark.sql("SELECT * FROM ratings_spark limit 10"))
+
+#movies_df.show(5)
+
+links_spark.createOrReplaceTempView("links_spark")
+
+display (spark.sql("SELECT * FROM links_spark limit 10"))
+
+# select all from the tabel and display 10 rows
+
+tags_spark.createOrReplaceTempView("tags_spark")
+
+display (spark.sql("SELECT * FROM tags_spark limit 10"))
+
+tmp1 = ratings_spark.groupBy("userID").count().toPandas()['count'].min()
+tmp2 = ratings_spark.groupBy("movieId").count().toPandas()['count'].min()
+print('For the users that rated movies and the movies that were rated:')
+print('Minimum number of ratings per user is {}'.format(tmp1))
+print('Minimum number of ratings per movie is {}'.format(tmp2))
+
+tmp1 = ratings_spark.groupBy("userID").count().toPandas()['count'].max()
+tmp2 = ratings_spark.groupBy("movieId").count().toPandas()['count'].max()
+print('For the users that rated movies and the movies that were rated:')
+print('Maximum number of ratings per user is {}'.format(tmp1))
+print('Maximum number of ratings per movie is {}'.format(tmp2))
+
+movie_ratings=ratings_spark.drop('timestamp')
+movie_ratings.show()
+
+# Data type convert
+from pyspark.sql.types import IntegerType, FloatType
+movie_ratings = movie_ratings.withColumn("userId", movie_ratings["userId"].cast(IntegerType()))
+movie_ratings = movie_ratings.withColumn("movieId", movie_ratings["movieId"].cast(IntegerType()))
+movie_ratings = movie_ratings.withColumn("rating", movie_ratings["rating"].cast(FloatType()))
+
+movie_ratings.show()
+
+tmp1 = sum(ratings_spark.groupBy("movieId").count().toPandas()['count'] == 1)
+tmp2 = ratings_spark.select('movieId').distinct().count()
+print('{} out of {} movies are rated by only one user'.format(tmp1, tmp2))
+
+from pyspark.sql.functions import col
+from pyspark.sql.types import FloatType
+
+# Ensure the 'rating' column is of type float
+ratings_spark = ratings_spark.withColumn("rating", ratings_spark["rating"].cast(FloatType()))
+
+# Join movies with ratings
+movie_ratings_df = movies_spark.join(ratings_spark, "movieId")
+
+# Group by movieId and title, calculate average rating for each movie
+# Use column names directly without DataFrame name prefix
+movie_ratings_grouped_df = movie_ratings_df.groupBy("movieId", "title").avg("rating")
+
+# Sort by the average rating in descending order to get the movies with the highest ratings
+top_rated_movies_df = movie_ratings_grouped_df.orderBy(col("avg(rating)").desc())
+
+# Show the top rated movies
+top_rated_movies_df.show()
+
+
+
+from pyspark.sql.functions import col
+from pyspark.sql.types import FloatType
+
+# Ensure the 'rating' column is of type float
+ratings_spark = ratings_spark.withColumn("rating", ratings_spark["rating"].cast(FloatType()))
+
+# Filter movies to include only Horror genre
+horror_movies_df = movies_spark.filter(movies_spark.genres.contains("Horror"))
+
+# Join horror movies with ratings
+horror_movie_ratings_df = horror_movies_df.join(ratings_spark, "movieId")
+
+# Group by movieId and title, calculate average rating for each movie
+horror_movie_ratings_grouped_df = horror_movie_ratings_df.groupBy("movieId", "title", "genres").avg("rating")
+
+# Sort by the average rating in descending order to get the movies with the highest ratings
+top_rated_horror_movies_df = horror_movie_ratings_grouped_df.orderBy(col("avg(rating)").desc())
+
+# Show the top rated horror movies
+top_rated_horror_movies_df.show()
+
+
+# Assuming links_spark and movies_spark DataFrames are already defined and have a common column 'movieId'
+
+# Join the DataFrames on the 'movieId' column
+joined_df = movies_spark.join(links_spark, movies_spark.movieId == links_spark.movieId)
+
+# Show the result to verify the join
+joined_df.show()
+
+
+
+from pyspark.sql.functions import col
+
+# Filter for movies in the Drama genre
+drama_movies_df = movies_spark.filter(col("genres").contains("Drama"))
+
+# Filter for ratings equal to 4
+ratings_4_df = ratings_spark.filter(col("rating") == 4)
+
+# Join the filtered movies with the filtered ratings
+drama_movies_with_ratings_df = drama_movies_df.join(ratings_4_df, "movieId")
+
+# Join the above result with the links DataFrame
+final_joined_df = drama_movies_with_ratings_df.join(links_spark, "movieId")
+
+# Show the result
+final_joined_df.show()
+
+
+from pyspark.sql.functions import col
+
+# Filter for movies in the War genre
+war_movies_df = movies_spark.filter(col("genres").contains("War"))
+
+# Filter for ratings equal to 3
+ratings_3_df = ratings_spark.filter(col("rating") == 3)
+
+# Join the filtered movies with the filtered ratings
+war_movies_rated_3_df = war_movies_df.join(ratings_3_df, "movieId")
+
+# Selecting the relevant columns, typically userId and movieId
+users_rated_war_movies_3 = war_movies_rated_3_df.select("userId", "movieId", "rating")
+
+# Show the result
+users_rated_war_movies_3.show()
+
+
+from pyspark.sql.functions import col, when
+
+# Show original ratings for demonstration
+print("Original Ratings:")
+ratings_spark.show()
+
+# Filter for ratings equal to 1
+ratings_1_df = ratings_spark.filter(col("rating") == 1)
+
+# Update these ratings to 2
+updated_ratings_df = ratings_1_df.withColumn("rating", when(col("rating") == 1, 2))
+
+# Creating a new DataFrame excluding the original 1 ratings
+ratings_excluding_1 = ratings_spark.filter(col("rating") != 1)
+
+# Union the updated ratings with the rest of the ratings
+final_ratings_df = ratings_excluding_1.union(updated_ratings_df)
+
+# Show updated ratings for demonstration
+print("Updated Ratings:")
+final_ratings_df.show()
+
+
+from pyspark.sql.functions import col, when
+
+# Show original ratings for demonstration
+print("Original Ratings:")
+ratings_spark.show()
+
+# Filter for ratings equal to 1
+ratings_1_df = ratings_spark.filter(col("rating") == 1)
+
+# Update these ratings to 2
+updated_ratings_df = ratings_1_df.withColumn("rating", when(col("rating") == 1, 2))
+
+# Creating a new DataFrame excluding the original 1 ratings
+ratings_excluding_1 = ratings_spark.filter(col("rating") != 1)
+
+# Union the updated ratings with the rest of the ratings
+final_ratings_df = ratings_excluding_1.union(updated_ratings_df)
+
+# Filter for ratings of 5 or higher, then sort
+filtered_sorted_final_ratings_df = final_ratings_df.filter(col("rating") >= 5).orderBy(col("rating"))
+
+# Show updated ratings for demonstration, filtered and sorted starting from 5
+print("Updated Ratings, Filtered and Sorted Starting from 5:")
+filtered_sorted_final_ratings_df.show(40)
